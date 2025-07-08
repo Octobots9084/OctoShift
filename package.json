@@ -1,0 +1,25 @@
+{
+  "name": "octoshift",
+  "version": "1.0.0",
+  "description": "bot for octobots",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AriLudkovski/OctoShift.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/AriLudkovski/OctoShift/issues"
+  },
+  "homepage": "https://github.com/AriLudkovski/OctoShift#readme",
+  "dependencies": {
+    "@slack/bolt": "^4.4.0",
+    "@slack/web-api": "^7.9.2",
+    "canvas": "^3.1.0",
+    "dotenv": "^16.5.0"
+  }
+}
