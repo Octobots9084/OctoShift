@@ -17,7 +17,7 @@ const schedulePath = path.join(__dirname, "schedule.json");
 const { App, ExpressReceiver } = require("@slack/bolt");
 const express = require("express");
 const { WebClient } = require("@slack/web-api");
-const octoClient = new WebClient(getTokenForTeam("T03RFNLNJ2K"));
+//const octoClient = new WebClient(getTokenForTeam("T03RFNLNJ2K"));
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
