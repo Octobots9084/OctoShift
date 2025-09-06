@@ -166,7 +166,24 @@ app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   } catch (error) {
     console.error("Failed to upload schedule image:", error);
   }
-});
+    if (!tokenStore[team]?.channelId) {
+      await client.chat.postEphemeral({
+        channel: command.channel_id, // current channel
+        user: command.user_id, // only the user who ran the command sees it
+        text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+      });
+    }
+
+    // Check if team has an event key
+    if (!tokenStore[team]?.eventKey) {
+      await client.chat.postEphemeral({
+        channel: command.channel_id,
+        user: command.user_id,
+        text: "⚠️ Set an event using `/set-event` to receive notifications!",
+      });
+    }
+  }
+);
 
 app.command("/scout-assign", async ({ command, ack, respond }) => {
   await ack();
@@ -182,7 +199,7 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
-    text: `recieved: set-event: ${text} from ${
+    text: `recieved: set-event: ${command.text} from ${
       command.user_name
     } in ${getNameForTeam(teamId)}`,
   });
@@ -223,16 +240,32 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
     block = { start: start, end: end, assignments: {}, team: teamId };
     schedule.push(block);
   }
-
+  tokenStore = getAllTokens();
   block.assignments[role] = userId;
   saveSchedule(schedule);
 
   respond(
     `✅ Assigned <@${userId}> to *${role.toUpperCase()}* for matches ${start}-${end}`
   );
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
-app.command("/block-assign", async ({ command, ack, respond }) => {
+app.command("/block-assign", async ({ command, ack, respond, client }) => {
   await ack();
   const team = command.team_id;
   const text = command.text.trim();
@@ -298,6 +331,23 @@ app.command("/block-assign", async ({ command, ack, respond }) => {
   saveSchedule(schedule);
   message += `to matches ${start}-${end}`;
   respond(message);
+
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
 app.command("/clear-schedule", async ({ command, ack, respond }) => {
@@ -457,7 +507,7 @@ app.action("cancel_delete", async ({ ack, body, client, respond }) => {
   await ack();
   await respond({ text: "❌Canceled", replace_original: true });
 });
-app.command("/set-channel", async ({ command, ack, respond }) => {
+app.command("/set-channel", async ({ command, ack, respond, client }) => {
   await ack();
   console.log(
     "recieved: set-channel from",
@@ -482,6 +532,15 @@ app.command("/set-channel", async ({ command, ack, respond }) => {
     } set to <#${channelId}>`,
     response_type: "ephemeral",
   });
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
 app.event("app_mention", async ({ event, client }) => {
@@ -526,16 +585,18 @@ app.command("/set-event", async ({ command, ack, respond }) => {
     channel: logChannel,
     text: `recieved: set-event: ${text} from ${command.user_name} in ${name}`,
   });
+  let tokenStore = getAllTokens();
   let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
   const response = await fetch(
     `https://www.thebluealliance.com/api/v3/event/${text}`,
     { headers }
   );
-  console.log("repspones: ", response.body);
+  let parsedResponse = await response.json();
+  console.log("repspones: ", parsedResponse);
   if (!response.ok) {
     return respond(`Event ${text} was not found`);
   } else {
-    saveEventForTeam(teamId);
+    saveEventForTeam(teamId, text);
   }
 
   //saveChannelForTeam(teamId, channelId);
@@ -543,9 +604,98 @@ app.command("/set-event", async ({ command, ack, respond }) => {
   await respond({
     text: `✅ Event for ${
       name || "Missing name, please reinstall App!!!"
-    } succesfully set to ${text}`,
+    } succesfully set to ${await parsedResponse.name}`,
     response_type: "ephemeral",
   });
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+});
+
+app.command("/call-match-test", async ({ command, ack, respond }) => {
+  await ack();
+  const text = command.text;
+  const team = command.team_id;
+  const name = getNameForTeam(team);
+  console.log(
+    "recieved: set-event: ",
+    text,
+    " from ",
+    command.user_name,
+    " in ",
+    name
+  );
+  await octoClient.chat.postMessage({
+    channel: logChannel,
+    text: `recieved: call-match: ${text} from ${command.user_name} in ${name}`,
+  });
+
+  const match = text.match(/^\d+$/);
+
+  if (!match) {
+    return respond("❌ Please provide a single integer only (e.g. `42`).");
+  }
+
+  //initialize important variables
+  const matchNum = parseInt(text, 10);
+  let schedule = loadSchedule();
+  const tokenStore = getAllTokens();
+  let message = "";
+  //
+  for (let i = 0; i < schedule.length; i++) {
+    if (schedule[i].start == matchNum && schedule[i].team == team) {
+      //ping starting people
+      assignments = schedule[i].assignments;
+      message += `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+      for (let j = 0; j < teams.length; j++) {
+        if (j == 3) {
+          message += `\n`;
+        }
+        if (j < 3) {
+          message += `🟦`;
+        } else {
+          message += `🟥`;
+        }
+        message += `${teams[j]}: `;
+        if (assignments[teams[j]]) {
+          message += `<@${assignments[teams[j]]}>\t`;
+        } else {
+          message += `none\t`;
+        }
+      }
+      const token = tokenStore[team].botToken;
+      const channel = tokenStore[team].channelId;
+      if (!tokenStore[team]?.channelId) {
+        await client.chat.postEphemeral({
+          channel: command.channel_id, // current channel
+          user: command.user_id, // only the user who ran the command sees it
+          text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+        });
+      }
+
+      // Check if team has an event key
+      if (!tokenStore[team]?.eventKey) {
+        await client.chat.postEphemeral({
+          channel: command.channel_id,
+          user: command.user_id,
+          text: "⚠️ Set an event using `/set-event` to receive notifications!",
+        });
+      }
+      if (token && channel) {
+        console.log("attempted to send");
+        await app.client.chat.postMessage({
+          token,
+          channel,
+          text: message,
+        });
+        console.log(`sent to ${getNameForTeam(team)}`);
+      }
+    }
+  }
 });
 
 //recieving match data
@@ -557,7 +707,7 @@ receiver.router.post("/webhook", async (req, res) => {
       return;
     }
   } catch (e) {
-    console.log("yipee");
+    console.log("Token already initialized");
   }
 
   let payload = req.body;
@@ -586,7 +736,7 @@ receiver.router.post("/webhook", async (req, res) => {
         ) {
           //ping starting people
           assignments = schedule[i].assignments;
-          message += `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+          message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
           for (let j = 0; j < teams.length; j++) {
             if (j == 3) {
               message += `\n`;
