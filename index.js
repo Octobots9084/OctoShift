@@ -525,7 +525,7 @@ app.command("/set-channel", async ({ command, ack, respond, client }) => {
   const channelId = command.channel_id;
   const name = getNameForTeam(teamId);
   saveChannelForTeam(teamId, channelId);
-
+  tokenStore = getAllTokens();
   await respond({
     text: `✅ Default channel for ${
       name || "Missing name, please reinstall App!!!"
@@ -695,6 +695,357 @@ app.command("/call-match-test", async ({ command, ack, respond }) => {
         console.log(`sent to ${getNameForTeam(team)}`);
       }
     }
+  }
+});
+
+//home tab
+async function generateHomeTab(team) {
+  let currentChannel = getChannelForTeam(team);
+  let blocks = [];
+  blocks.push(
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*👋 Welcome to OctoShift!* \nHere you can configure your team's scouting schedule.",
+      },
+    },
+    {
+      type: "divider",
+    },
+    {
+      type: "input",
+      block_id: "channel_block",
+      label: {
+        type: "plain_text",
+        text: "Default Channel",
+      },
+      element: {
+        // ✅ must be "element" instead of "accessory"
+        type: "conversations_select",
+        action_id: "channel_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Select a channel to receive notifications",
+        },
+        ...(currentChannel ? { initial_conversation: currentChannel } : {}),
+      },
+    },
+    {
+      type: "input",
+      block_id: "event_block",
+      label: {
+        type: "plain_text",
+        text: "Event Key",
+      },
+      element: {
+        type: "plain_text_input",
+        action_id: "event_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Enter event code (e.g., 2025cave)",
+        },
+      },
+    },
+    {
+      type: "divider",
+    }
+  );
+
+  let schedule = loadSchedule();
+  var filteredSchedule = schedule.filter((element) => element.team == team);
+  filteredSchedule.sort((a, b) => a.start - b.start);
+
+  schedule.forEach((block, index) => {
+    blocks.push(
+      {
+        type: "input",
+        block_id: `block_${block.start}-${block.end}_range`,
+        label: {
+          type: "plain_text",
+          text: "Match Range",
+        },
+        element: {
+          type: "plain_text_input",
+          action_id: "match_range_input",
+          initial_value: `${block.start}-${block.end}`, // e.g., "11-20"
+          placeholder: {
+            type: "plain_text",
+            text: "Enter start-end (e.g., 11-20)",
+          },
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Blue Alliance 🟦",
+        },
+      },
+      {
+        type: "actions",
+        block_id: `blue_team_${block.start}-${block.end}`,
+        elements: ["Blue 1", "Blue 2", "Blue 3"].map((role) => ({
+          type: "users_select",
+          action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+          placeholder: { type: "plain_text", text: role },
+          initial_user: block.assignments?.[role] || undefined,
+        })),
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Red Alliance 🟥",
+        },
+      },
+      {
+        type: "actions",
+        block_id: `red_team_${block.start}-${block.end}`,
+        elements: [
+          ...["Red 1", "Red 2", "Red 3"].map((role) => ({
+            type: "users_select",
+            action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+            placeholder: { type: "plain_text", text: role },
+            initial_user: block.assignments?.[role] || undefined,
+          })),
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "🗑️ Delete",
+              emoji: true,
+            },
+            style: "danger",
+            action_id: `delete_block_${block.start}-${block.end}`,
+            value: JSON.stringify({ start: block.start, end: block.end }),
+            confirm: {
+              title: { type: "plain_text", text: "Delete Block?" },
+              text: {
+                type: "mrkdwn",
+                text: `Are you sure you want to delete block *${block.start}-${block.end}*?`,
+              },
+              confirm: { type: "plain_text", text: "Yes, delete" },
+              deny: { type: "plain_text", text: "Cancel" },
+            },
+          },
+        ],
+      }
+    );
+
+    // Divider between blocks
+    blocks.push({ type: "divider" });
+  });
+
+  blocks.push(
+    {
+      type: "actions",
+      block_id: "add_block",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "+ Add Block",
+          },
+          style: "primary",
+          action_id: "add_block_btn",
+        },
+      ],
+    },
+    {
+      type: "actions",
+      block_id: "save_block",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "💾 Save Settings",
+          },
+          style: "primary",
+          value: "save_settings",
+          action_id: "save_settings_btn",
+        },
+      ],
+    }
+  );
+
+  return blocks;
+}
+
+async function saveSettings(body) {
+  const values = body.view.state.values;
+  //console.log(values);
+  const channelId = values.channel_block.channel_input.selected_conversation;
+  const eventKey = values.event_block.event_input.value;
+
+  const teamId = body.team.id;
+  let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
+  const response = await fetch(
+    `https://www.thebluealliance.com/api/v3/event/${eventKey}`,
+    { headers }
+  );
+  saveChannelForTeam(teamId, channelId);
+  if (response.ok) {
+    saveEventForTeam(teamId, eventKey);
+  }
+  schedule = loadSchedule();
+  schedule.forEach((block, index) => {
+    if (block.team == teamId) {
+      //save start and end range
+      rangeInput =
+        values[`block_${block.start}-${block.end}_range`].match_range_input
+          .value;
+      const range = rangeInput.match(/(\d+)-(\d+)/);
+      const start = parseInt(range[1], 10);
+      const end = parseInt(range[2], 10);
+
+      //save blue alliance scouts
+      let blueInput = values[`blue_team_${block.start}-${block.end}`];
+      for (let i = 1; i <= 3; i++) {
+        if (blueInput[`blue_${i}_input`].selected_user) {
+          block.assignments[`Blue ${i}`] =
+            blueInput[`blue_${i}_input`].selected_user;
+        }
+      }
+      redInput = values[`red_team_${block.start}-${block.end}`];
+      for (let i = 1; i <= 3; i++) {
+        if (redInput[`red_${i}_input`].selected_user) {
+          block.assignments[`Red ${i}`] =
+            redInput[`red_${i}_input`].selected_user;
+        }
+      }
+
+      block.start = start;
+      block.end = end;
+    }
+  });
+  saveSchedule(schedule);
+}
+
+app.event("app_home_opened", async ({ event, client }) => {
+  if (event.tab == "home") {
+    let blocks = await generateHomeTab(event.view.team_id);
+    try {
+      await client.views.publish({
+        user_id: event.user,
+        view: {
+          type: "home",
+          callback_id: "home_view",
+
+          blocks: blocks,
+        },
+      });
+    } catch (error) {
+      console.error("Error publishing home tab:", error);
+    }
+  }
+});
+
+// Handle save button
+app.action(/_input$/, async ({ body, ack, client, logger }) => {
+  await ack();
+  // Extract inputs from the Home Tab state
+  await saveSettings(body);
+
+  // Update home tab with confirmation
+  const blocks = await generateHomeTab(body.team.id);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+
+app.action("save_settings_btn", async ({ ack, body, client }) => {
+  await ack();
+  // Extract inputs from the Home Tab state
+  await saveSettings(body);
+
+  // Update home tab with confirmation
+  const blocks = await generateHomeTab(body.team.id);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+app.action("add_block_btn", async ({ ack, body, client }) => {
+  await ack();
+
+  await saveSettings(body);
+  // Create a new block with default start/end or increment from last
+  const teamId = body.team.id;
+  const schedule = loadSchedule().filter((b) => b.team === teamId);
+
+  let newStart = 1;
+  if (schedule.length > 0) {
+    newStart = Math.max(...schedule.map((b) => b.start)) + 1;
+  }
+
+  const newBlock = {
+    start: newStart,
+    end: newStart,
+    assignments: {},
+    team: teamId,
+  };
+  schedule.push(newBlock);
+  saveSchedule(schedule);
+
+  // Republish Home tab with the new block added
+  const blocks = await generateHomeTab(body.team.id);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+app.action(/delete_block_/, async ({ ack, body, client, action }) => {
+  await ack();
+
+  try {
+    // Extract start/end from button value
+    const { start, end } = JSON.parse(action.value);
+    const teamId = body.team.id;
+
+    // Load schedule
+    const schedule = loadSchedule();
+
+    // Remove the matching block
+    const updatedSchedule = schedule.filter(
+      (b) => !(b.start === start && b.end === end && b.team === teamId)
+    );
+
+    saveSchedule(updatedSchedule);
+
+    // Update the home tab so the block disappears immediately
+    const blocks = await generateHomeTab(teamId);
+    await client.views.publish({
+      user_id: body.user.id,
+      view: {
+        type: "home",
+        callback_id: "home_view",
+
+        blocks: blocks,
+      },
+    });
+
+    console.log(`🗑️ Deleted block ${start}-${end} for team ${teamId}`);
+  } catch (err) {
+    console.error("Failed to delete block:", err);
   }
 });
 
