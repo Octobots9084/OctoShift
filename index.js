@@ -21,6 +21,7 @@ const octoClient = new WebClient(getTokenForTeam("T03RFNLNJ2K"));
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
+
 receiver.router.use(express.json());
 const app = new App({
   authorize: async ({ teamId }) => {
@@ -68,6 +69,10 @@ async function getDisplayName(userId, team) {
     console.error(`Failed to fetch user ${userId}:`, e);
     return "unknown";
   }
+}
+
+function generateId() {
+  return "block_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
 }
 
 async function generateScheduleImage(schedule, team) {
@@ -119,6 +124,7 @@ async function generateScheduleImage(schedule, team) {
 app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   await ack(); // Ack early to avoid timeout
 
+  tokenStore=getAllTokens();
   const users = [];
   let team = command.team_id;
   console.log(
@@ -166,7 +172,24 @@ app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   } catch (error) {
     console.error("Failed to upload schedule image:", error);
   }
-});
+    if (!tokenStore[team]?.channelId) {
+      await client.chat.postEphemeral({
+        channel: command.channel_id, // current channel
+        user: command.user_id, // only the user who ran the command sees it
+        text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+      });
+    }
+
+    // Check if team has an event key
+    if (!tokenStore[team]?.eventKey) {
+      await client.chat.postEphemeral({
+        channel: command.channel_id,
+        user: command.user_id,
+        text: "⚠️ Set an event using `/set-event` to receive notifications!",
+      });
+    }
+  }
+);
 
 app.command("/scout-assign", async ({ command, ack, respond }) => {
   await ack();
@@ -182,7 +205,7 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
-    text: `recieved: set-event: ${text} from ${
+    text: `recieved: set-event: ${command.text} from ${
       command.user_name
     } in ${getNameForTeam(teamId)}`,
   });
@@ -220,19 +243,41 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
     (b) => b.start === start && b.end === end && b.team == teamId
   );
   if (!block) {
-    block = { start: start, end: end, assignments: {}, team: teamId };
+    block = {
+      start: start,
+      end: end,
+      assignments: {},
+      team: teamId,
+      id: generateId(),
+    };
     schedule.push(block);
   }
-
+  tokenStore = getAllTokens();
   block.assignments[role] = userId;
   saveSchedule(schedule);
 
   respond(
     `✅ Assigned <@${userId}> to *${role.toUpperCase()}* for matches ${start}-${end}`
   );
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
-app.command("/block-assign", async ({ command, ack, respond }) => {
+app.command("/block-assign", async ({ command, ack, respond, client }) => {
   await ack();
   const team = command.team_id;
   const text = command.text.trim();
@@ -284,7 +329,13 @@ app.command("/block-assign", async ({ command, ack, respond }) => {
     (b) => b.start === start && b.end === end && b.team == team
   );
   if (!block) {
-    block = { start: start, end: end, assignments: {}, team: team };
+    block = {
+      start: start,
+      end: end,
+      assignments: {},
+      team: team,
+      id: generateId(),
+    };
     schedule.push(block);
   }
   let message = `Assigned; `;
@@ -298,6 +349,23 @@ app.command("/block-assign", async ({ command, ack, respond }) => {
   saveSchedule(schedule);
   message += `to matches ${start}-${end}`;
   respond(message);
+
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
 app.command("/clear-schedule", async ({ command, ack, respond }) => {
@@ -457,7 +525,7 @@ app.action("cancel_delete", async ({ ack, body, client, respond }) => {
   await ack();
   await respond({ text: "❌Canceled", replace_original: true });
 });
-app.command("/set-channel", async ({ command, ack, respond }) => {
+app.command("/set-channel", async ({ command, ack, respond, client }) => {
   await ack();
   console.log(
     "recieved: set-channel from",
@@ -475,13 +543,22 @@ app.command("/set-channel", async ({ command, ack, respond }) => {
   const channelId = command.channel_id;
   const name = getNameForTeam(teamId);
   saveChannelForTeam(teamId, channelId);
-
+  tokenStore = getAllTokens();
   await respond({
     text: `✅ Default channel for ${
       name || "Missing name, please reinstall App!!!"
     } set to <#${channelId}>`,
     response_type: "ephemeral",
   });
+
+  // Check if team has an event key
+  if (!tokenStore[teamId]?.eventKey) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Set an event using `/set-event` to receive notifications!",
+    });
+  }
 });
 
 app.event("app_mention", async ({ event, client }) => {
@@ -526,16 +603,18 @@ app.command("/set-event", async ({ command, ack, respond }) => {
     channel: logChannel,
     text: `recieved: set-event: ${text} from ${command.user_name} in ${name}`,
   });
+  let tokenStore = getAllTokens();
   let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
   const response = await fetch(
     `https://www.thebluealliance.com/api/v3/event/${text}`,
     { headers }
   );
-  console.log("repspones: ", response.body);
+  let parsedResponse = await response.json();
+  console.log("repspones: ", parsedResponse);
   if (!response.ok) {
     return respond(`Event ${text} was not found`);
   } else {
-    saveEventForTeam(teamId);
+    saveEventForTeam(teamId, text);
   }
 
   //saveChannelForTeam(teamId, channelId);
@@ -543,9 +622,473 @@ app.command("/set-event", async ({ command, ack, respond }) => {
   await respond({
     text: `✅ Event for ${
       name || "Missing name, please reinstall App!!!"
-    } succesfully set to ${text}`,
+    } succesfully set to ${await parsedResponse.name}`,
     response_type: "ephemeral",
   });
+  if (!tokenStore[teamId]?.channelId) {
+    await client.chat.postEphemeral({
+      channel: command.channel_id, // current channel
+      user: command.user_id, // only the user who ran the command sees it
+      text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+    });
+  }
+});
+
+app.command("/call-match-test", async ({ command, ack, respond }) => {
+  await ack();
+  const text = command.text;
+  const team = command.team_id;
+  const name = getNameForTeam(team);
+  console.log(
+    "recieved: set-event: ",
+    text,
+    " from ",
+    command.user_name,
+    " in ",
+    name
+  );
+  await octoClient.chat.postMessage({
+    channel: logChannel,
+    text: `recieved: call-match: ${text} from ${command.user_name} in ${name}`,
+  });
+
+  const match = text.match(/^\d+$/);
+
+  if (!match) {
+    return respond("❌ Please provide a single integer only (e.g. `42`).");
+  }
+
+  //initialize important variables
+  const matchNum = parseInt(text, 10);
+  let schedule = loadSchedule();
+  const tokenStore = getAllTokens();
+  let message = "";
+  //
+  for (let i = 0; i < schedule.length; i++) {
+    if (schedule[i].start == matchNum && schedule[i].team == team) {
+      //ping starting people
+      assignments = schedule[i].assignments;
+      message += `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+      for (let j = 0; j < teams.length; j++) {
+        if (j == 3) {
+          message += `\n`;
+        }
+        if (j < 3) {
+          message += `🟦`;
+        } else {
+          message += `🟥`;
+        }
+        message += `${teams[j]}: `;
+        if (assignments[teams[j]]) {
+          message += `<@${assignments[teams[j]]}>\t`;
+        } else {
+          message += `none\t`;
+        }
+      }
+      const token = tokenStore[team].botToken;
+      const channel = tokenStore[team].channelId;
+      if (!tokenStore[team]?.channelId) {
+        await client.chat.postEphemeral({
+          channel: command.channel_id, // current channel
+          user: command.user_id, // only the user who ran the command sees it
+          text: "⚠️ Set a default channel using `/set-channel` to receive notifications!",
+        });
+      }
+
+      // Check if team has an event key
+      if (!tokenStore[team]?.eventKey) {
+        await client.chat.postEphemeral({
+          channel: command.channel_id,
+          user: command.user_id,
+          text: "⚠️ Set an event using `/set-event` to receive notifications!",
+        });
+      }
+      if (token && channel) {
+        console.log("attempted to send");
+        await app.client.chat.postMessage({
+          token,
+          channel,
+          text: message,
+        });
+        console.log(`sent to ${getNameForTeam(team)}`);
+      }
+    }
+  }
+});
+
+//home tab
+async function generateHomeTab(team, errorMessage) {
+  let currentChannel = getChannelForTeam(team);
+  let blocks = [];
+  blocks.push(
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*👋 Welcome to OctoShift!* \nHere you can configure your team's scouting schedule.",
+      },
+    },
+    {
+      type: "divider",
+    },
+    {
+      type: "input",
+      block_id: "channel_block",
+      label: {
+        type: "plain_text",
+        text: "Default Channel",
+      },
+      element: {
+        // ✅ must be "element" instead of "accessory"
+        type: "conversations_select",
+        action_id: "channel_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Select a channel to receive notifications",
+        },
+        ...(currentChannel ? { initial_conversation: currentChannel } : {}),
+      },
+    },
+    {
+      type: "input",
+      block_id: "event_block",
+      label: {
+        type: "plain_text",
+        text: "Event Key",
+      },
+      element: {
+        type: "plain_text_input",
+        action_id: "event_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Enter event code (e.g., 2025cave)",
+        },
+      },
+    },
+    {
+      type: "divider",
+    }
+  );
+  if (errorMessage) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:warning:\r ${errorMessage}`,
+      },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  let schedule = loadSchedule();
+  var filteredSchedule = schedule.filter((element) => element.team == team);
+  filteredSchedule.sort((a, b) => a.start - b.start);
+
+  schedule.forEach((block, index) => {
+    blocks.push(
+      {
+        type: "input",
+        block_id: `block_${block.id}_range`,
+        label: {
+          type: "plain_text",
+          text: "Match Range",
+        },
+        element: {
+          type: "plain_text_input",
+          action_id: "match_range_input",
+          initial_value: `${block.start}-${block.end}`, // e.g., "11-20"
+          placeholder: {
+            type: "plain_text",
+            text: "Enter start-end (e.g., 11-20)",
+          },
+        },
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Blue Alliance 🟦",
+        },
+      },
+      {
+        type: "actions",
+        block_id: `blue_team_${block.id}`,
+        elements: ["Blue 1", "Blue 2", "Blue 3"].map((role) => ({
+          type: "users_select",
+          action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+          placeholder: { type: "plain_text", text: role },
+          initial_user: block.assignments?.[role] || undefined,
+        })),
+      },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Red Alliance 🟥",
+        },
+      },
+      {
+        type: "actions",
+        block_id: `red_team_${block.id}`,
+        elements: [
+          ...["Red 1", "Red 2", "Red 3"].map((role) => ({
+            type: "users_select",
+            action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+            placeholder: { type: "plain_text", text: role },
+            initial_user: block.assignments?.[role] || undefined,
+          })),
+          {
+            type: "button",
+            text: {
+              type: "plain_text",
+              text: "🗑️ Delete",
+              emoji: true,
+            },
+            style: "danger",
+            action_id: `delete_block_${block.id}`,
+            value: JSON.stringify({ start: block.start, end: block.end }),
+            confirm: {
+              title: { type: "plain_text", text: "Delete Block?" },
+              text: {
+                type: "mrkdwn",
+                text: `Are you sure you want to delete block *${block.start}-${block.end}*?`,
+              },
+              confirm: { type: "plain_text", text: "Yes, delete" },
+              deny: { type: "plain_text", text: "Cancel" },
+            },
+          },
+        ],
+      }
+    );
+
+    // Divider between blocks
+    blocks.push({ type: "divider" });
+  });
+
+  blocks.push(
+    {
+      type: "actions",
+      block_id: "add_block",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "+ Add Block",
+          },
+          style: "primary",
+          action_id: "add_block_btn",
+        },
+      ],
+    },
+    {
+      type: "actions",
+      block_id: "save_block",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: "💾 Save Settings",
+          },
+          style: "primary",
+          value: "save_settings",
+          action_id: "save_settings_btn",
+        },
+      ],
+    }
+  );
+
+  return blocks;
+}
+
+async function saveSettings(body) {
+  let errors = ``;
+  const values = body.view.state.values;
+  //console.log(values);
+  const channelId = values.channel_block.channel_input.selected_conversation;
+  const eventKey = values.event_block.event_input.value;
+
+  const teamId = body.team.id;
+  let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
+  const response = await fetch(
+    `https://www.thebluealliance.com/api/v3/event/${eventKey}`,
+    { headers }
+  );
+  saveChannelForTeam(teamId, channelId);
+  if (response.ok) {
+    saveEventForTeam(teamId, eventKey);
+  } else {
+    if (eventKey) {
+      errors += `${eventKey} is not a valid event\r`;
+    }
+  }
+  schedule = loadSchedule();
+
+  schedule.forEach((block, index) => {
+    if (block.team == teamId) {
+      //save start and end range
+      rangeInput = values[`block_${block.id}_range`].match_range_input.value;
+      try {
+        const range = rangeInput.match(/^\s*(\-?\d+)\s*-\s*(\-?\d+)\s*$/);
+        const start = parseInt(range[1], 10);
+        const end = parseInt(range[2], 10);
+      } catch (error) {
+        errors += `Syntax error in match number\r`;
+      }
+      //save blue alliance scouts
+      let blueInput = values[`blue_team_${block.id}`];
+      for (let i = 1; i <= 3; i++) {
+        if (blueInput[`blue_${i}_input`].selected_user) {
+          block.assignments[`Blue ${i}`] =
+            blueInput[`blue_${i}_input`].selected_user;
+        }
+      }
+      redInput = values[`red_team_${block.id}`];
+      for (let i = 1; i <= 3; i++) {
+        if (redInput[`red_${i}_input`].selected_user) {
+          block.assignments[`Red ${i}`] =
+            redInput[`red_${i}_input`].selected_user;
+        }
+      }
+      try {
+        if (start && end && start > end) {
+          errors += `Block ${start}-${end} wasnt saved! (out of order)`;
+        } else if (start && end) {
+          block.start = start;
+          block.end = end;
+        }
+      } catch (e) {}
+    }
+  });
+  saveSchedule(schedule);
+  return errors;
+}
+
+app.event("app_home_opened", async ({ event, client, body }) => {
+  if (event.tab == "home") {
+    let blocks = await generateHomeTab(body.team_id);
+    try {
+      await client.views.publish({
+        user_id: event.user,
+        view: {
+          type: "home",
+          callback_id: "home_view",
+
+          blocks: blocks,
+        },
+      });
+    } catch (error) {
+      console.error("Error publishing home tab:", error);
+    }
+  }
+});
+
+// Handle save button
+app.action(/_input$/, async ({ body, ack, client, logger }) => {
+  await ack();
+  // Extract inputs from the Home Tab state
+  let errors = await saveSettings(body);
+
+  // Update home tab with confirmation
+  const blocks = await generateHomeTab(body.team.id, errors);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+
+app.action("save_settings_btn", async ({ ack, body, client }) => {
+  await ack();
+  // Extract inputs from the Home Tab state
+  let errors = await saveSettings(body);
+
+  // Update home tab with confirmation
+  const blocks = await generateHomeTab(body.team.id, errors);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+app.action("add_block_btn", async ({ ack, body, client }) => {
+  await ack();
+
+  await saveSettings(body);
+  // Create a new block with default start/end or increment from last
+  const teamId = body.team.id;
+  const schedule = loadSchedule().filter((b) => b.team === teamId);
+
+  let newStart = 1;
+  if (schedule.length > 0) {
+    newStart = Math.max(...schedule.map((b) => b.start)) + 1;
+  }
+
+  const newBlock = {
+    start: newStart,
+    end: newStart,
+    assignments: {},
+    team: teamId,
+    id: generateId(),
+  };
+  schedule.push(newBlock);
+  saveSchedule(schedule);
+
+  // Republish Home tab with the new block added
+  const blocks = await generateHomeTab(body.team.id);
+  await client.views.publish({
+    user_id: body.user.id,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+
+      blocks: blocks,
+    },
+  });
+});
+app.action(/delete_block_/, async ({ ack, body, client, action }) => {
+  await ack();
+
+  try {
+    // Extract start/end from button value
+    const { start, end } = JSON.parse(action.value);
+    const teamId = body.team.id;
+
+    // Load schedule
+    const schedule = loadSchedule();
+
+    // Remove the matching block
+    const updatedSchedule = schedule.filter(
+      (b) => !(b.start === start && b.end === end && b.team === teamId)
+    );
+
+    saveSchedule(updatedSchedule);
+
+    // Update the home tab so the block disappears immediately
+    const blocks = await generateHomeTab(teamId);
+    await client.views.publish({
+      user_id: body.user.id,
+      view: {
+        type: "home",
+        callback_id: "home_view",
+
+        blocks: blocks,
+      },
+    });
+
+    console.log(`🗑️ Deleted block ${start}-${end} for team ${teamId}`);
+  } catch (err) {
+    console.error("Failed to delete block:", err);
+  }
 });
 
 //recieving match data
@@ -557,7 +1100,7 @@ receiver.router.post("/webhook", async (req, res) => {
       return;
     }
   } catch (e) {
-    console.log("yipee");
+    console.log("Token already initialized");
   }
 
   let payload = req.body;
@@ -586,7 +1129,7 @@ receiver.router.post("/webhook", async (req, res) => {
         ) {
           //ping starting people
           assignments = schedule[i].assignments;
-          message += `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+          message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
           for (let j = 0; j < teams.length; j++) {
             if (j == 3) {
               message += `\n`;
