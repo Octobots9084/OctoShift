@@ -634,7 +634,7 @@ app.command("/set-event", async ({ command, ack, respond }) => {
   }
 });
 
-app.command("/call-match-test", async ({ command, ack, respond }) => {
+app.command("/call-match", async ({ command, ack, respond }) => {
   await ack();
   const text = command.text;
   const team = command.team_id;
