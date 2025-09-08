@@ -21,6 +21,7 @@ const octoClient = new WebClient(getTokenForTeam("T03RFNLNJ2K"));
 const receiver = new ExpressReceiver({
   signingSecret: process.env.SLACK_SIGNING_SECRET,
 });
+
 receiver.router.use(express.json());
 const app = new App({
   authorize: async ({ teamId }) => {
@@ -68,6 +69,10 @@ async function getDisplayName(userId, team) {
     console.error(`Failed to fetch user ${userId}:`, e);
     return "unknown";
   }
+}
+
+function generateId() {
+  return "block_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
 }
 
 async function generateScheduleImage(schedule, team) {
@@ -119,6 +124,7 @@ async function generateScheduleImage(schedule, team) {
 app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   await ack(); // Ack early to avoid timeout
 
+  tokenStore=getAllTokens();
   const users = [];
   let team = command.team_id;
   console.log(
@@ -237,7 +243,13 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
     (b) => b.start === start && b.end === end && b.team == teamId
   );
   if (!block) {
-    block = { start: start, end: end, assignments: {}, team: teamId };
+    block = {
+      start: start,
+      end: end,
+      assignments: {},
+      team: teamId,
+      id: generateId(),
+    };
     schedule.push(block);
   }
   tokenStore = getAllTokens();
@@ -317,7 +329,13 @@ app.command("/block-assign", async ({ command, ack, respond, client }) => {
     (b) => b.start === start && b.end === end && b.team == team
   );
   if (!block) {
-    block = { start: start, end: end, assignments: {}, team: team };
+    block = {
+      start: start,
+      end: end,
+      assignments: {},
+      team: team,
+      id: generateId(),
+    };
     schedule.push(block);
   }
   let message = `Assigned; `;
@@ -699,7 +717,7 @@ app.command("/call-match-test", async ({ command, ack, respond }) => {
 });
 
 //home tab
-async function generateHomeTab(team) {
+async function generateHomeTab(team, errorMessage) {
   let currentChannel = getChannelForTeam(team);
   let blocks = [];
   blocks.push(
@@ -751,6 +769,16 @@ async function generateHomeTab(team) {
       type: "divider",
     }
   );
+  if (errorMessage) {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `:warning:\r ${errorMessage}`,
+      },
+    });
+    blocks.push({ type: "divider" });
+  }
 
   let schedule = loadSchedule();
   var filteredSchedule = schedule.filter((element) => element.team == team);
@@ -760,7 +788,7 @@ async function generateHomeTab(team) {
     blocks.push(
       {
         type: "input",
-        block_id: `block_${block.start}-${block.end}_range`,
+        block_id: `block_${block.id}_range`,
         label: {
           type: "plain_text",
           text: "Match Range",
@@ -784,7 +812,7 @@ async function generateHomeTab(team) {
       },
       {
         type: "actions",
-        block_id: `blue_team_${block.start}-${block.end}`,
+        block_id: `blue_team_${block.id}`,
         elements: ["Blue 1", "Blue 2", "Blue 3"].map((role) => ({
           type: "users_select",
           action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
@@ -801,7 +829,7 @@ async function generateHomeTab(team) {
       },
       {
         type: "actions",
-        block_id: `red_team_${block.start}-${block.end}`,
+        block_id: `red_team_${block.id}`,
         elements: [
           ...["Red 1", "Red 2", "Red 3"].map((role) => ({
             type: "users_select",
@@ -817,7 +845,7 @@ async function generateHomeTab(team) {
               emoji: true,
             },
             style: "danger",
-            action_id: `delete_block_${block.start}-${block.end}`,
+            action_id: `delete_block_${block.id}`,
             value: JSON.stringify({ start: block.start, end: block.end }),
             confirm: {
               title: { type: "plain_text", text: "Delete Block?" },
@@ -875,6 +903,7 @@ async function generateHomeTab(team) {
 }
 
 async function saveSettings(body) {
+  let errors = ``;
   const values = body.view.state.values;
   //console.log(values);
   const channelId = values.channel_block.channel_input.selected_conversation;
@@ -889,44 +918,56 @@ async function saveSettings(body) {
   saveChannelForTeam(teamId, channelId);
   if (response.ok) {
     saveEventForTeam(teamId, eventKey);
+  } else {
+    if (eventKey) {
+      errors += `${eventKey} is not a valid event\r`;
+    }
   }
   schedule = loadSchedule();
+
   schedule.forEach((block, index) => {
     if (block.team == teamId) {
       //save start and end range
-      rangeInput =
-        values[`block_${block.start}-${block.end}_range`].match_range_input
-          .value;
-      const range = rangeInput.match(/(\d+)-(\d+)/);
-      const start = parseInt(range[1], 10);
-      const end = parseInt(range[2], 10);
-
+      rangeInput = values[`block_${block.id}_range`].match_range_input.value;
+      try {
+        const range = rangeInput.match(/^\s*(\-?\d+)\s*-\s*(\-?\d+)\s*$/);
+        const start = parseInt(range[1], 10);
+        const end = parseInt(range[2], 10);
+      } catch (error) {
+        errors += `Syntax error in match number\r`;
+      }
       //save blue alliance scouts
-      let blueInput = values[`blue_team_${block.start}-${block.end}`];
+      let blueInput = values[`blue_team_${block.id}`];
       for (let i = 1; i <= 3; i++) {
         if (blueInput[`blue_${i}_input`].selected_user) {
           block.assignments[`Blue ${i}`] =
             blueInput[`blue_${i}_input`].selected_user;
         }
       }
-      redInput = values[`red_team_${block.start}-${block.end}`];
+      redInput = values[`red_team_${block.id}`];
       for (let i = 1; i <= 3; i++) {
         if (redInput[`red_${i}_input`].selected_user) {
           block.assignments[`Red ${i}`] =
             redInput[`red_${i}_input`].selected_user;
         }
       }
-
-      block.start = start;
-      block.end = end;
+      try {
+        if (start && end && start > end) {
+          errors += `Block ${start}-${end} wasnt saved! (out of order)`;
+        } else if (start && end) {
+          block.start = start;
+          block.end = end;
+        }
+      } catch (e) {}
     }
   });
   saveSchedule(schedule);
+  return errors;
 }
 
-app.event("app_home_opened", async ({ event, client }) => {
+app.event("app_home_opened", async ({ event, client, body }) => {
   if (event.tab == "home") {
-    let blocks = await generateHomeTab(event.view.team_id);
+    let blocks = await generateHomeTab(body.team_id);
     try {
       await client.views.publish({
         user_id: event.user,
@@ -947,10 +988,10 @@ app.event("app_home_opened", async ({ event, client }) => {
 app.action(/_input$/, async ({ body, ack, client, logger }) => {
   await ack();
   // Extract inputs from the Home Tab state
-  await saveSettings(body);
+  let errors = await saveSettings(body);
 
   // Update home tab with confirmation
-  const blocks = await generateHomeTab(body.team.id);
+  const blocks = await generateHomeTab(body.team.id, errors);
   await client.views.publish({
     user_id: body.user.id,
     view: {
@@ -965,10 +1006,10 @@ app.action(/_input$/, async ({ body, ack, client, logger }) => {
 app.action("save_settings_btn", async ({ ack, body, client }) => {
   await ack();
   // Extract inputs from the Home Tab state
-  await saveSettings(body);
+  let errors = await saveSettings(body);
 
   // Update home tab with confirmation
-  const blocks = await generateHomeTab(body.team.id);
+  const blocks = await generateHomeTab(body.team.id, errors);
   await client.views.publish({
     user_id: body.user.id,
     view: {
@@ -997,6 +1038,7 @@ app.action("add_block_btn", async ({ ack, body, client }) => {
     end: newStart,
     assignments: {},
     team: teamId,
+    id: generateId(),
   };
   schedule.push(newBlock);
   saveSchedule(schedule);
