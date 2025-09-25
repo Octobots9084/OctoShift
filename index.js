@@ -634,7 +634,7 @@ app.command("/set-event", async ({ command, ack, respond }) => {
   }
 });
 
-app.command("/call-match-test", async ({ command, ack, respond }) => {
+app.command("/call-match", async ({ command, ack, respond }) => {
   await ack();
   const text = command.text;
   const team = command.team_id;
@@ -929,10 +929,12 @@ async function saveSettings(body) {
     if (block.team == teamId) {
       //save start and end range
       rangeInput = values[`block_${block.id}_range`].match_range_input.value;
+      let start;
+      let end;
       try {
         const range = rangeInput.match(/^\s*(\-?\d+)\s*-\s*(\-?\d+)\s*$/);
-        const start = parseInt(range[1], 10);
-        const end = parseInt(range[2], 10);
+        start = parseInt(range[1], 10);
+        end = parseInt(range[2], 10);
       } catch (error) {
         errors += `Syntax error in match number\r`;
       }
@@ -951,14 +953,12 @@ async function saveSettings(body) {
             redInput[`red_${i}_input`].selected_user;
         }
       }
-      try {
-        if (start && end && start > end) {
-          errors += `Block ${start}-${end} wasnt saved! (out of order)`;
-        } else if (start && end) {
-          block.start = start;
-          block.end = end;
-        }
-      } catch (e) {}
+      if (start && end && start > end) {
+        errors += `Block ${start}-${end} wasnt saved! (out of order)`;
+      } else if (start && end) {
+        block.start = start;
+        block.end = end;
+      }
     }
   });
   saveSchedule(schedule);
