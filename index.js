@@ -1122,10 +1122,12 @@ receiver.router.post("/webhook", async (req, res) => {
     for (const team in tokenStore) {
       for (let i = 0; i < schedule.length; i++) {
         if (
-          schedule[i].start ==
-            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) &&
+          (schedule[i].start ==
+            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1 ||
+            schedule[i].start ==
+              parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 2) &&
           schedule[i].team == team &&
-          team["event"] == req.body.eventKey
+          tokenStore[team]["event"] == req.body.eventKey
         ) {
           //ping starting people
           assignments = schedule[i].assignments;
