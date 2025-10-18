@@ -1129,7 +1129,20 @@ receiver.router.post("/webhook", async (req, res) => {
         ) {
           //ping starting people
           assignments = schedule[i].assignments;
-          message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+          if (
+            schedule[i].start ==
+            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1
+          ) {
+            message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
+          } else if (
+            schedule[i].start ==
+            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 2
+          ) {
+            message = `Match ${schedule[i].start} is starting *NOW*\n`;
+          } else {
+            message = "Error creating message, but scout anyway please: \n";
+          }
+
           for (let j = 0; j < teams.length; j++) {
             if (j == 3) {
               message += `\n`;
