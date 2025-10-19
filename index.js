@@ -181,7 +181,7 @@ app.command("/print-schedule", async ({ command, ack, client, respond }) => {
     }
 
     // Check if team has an event key
-    if (!tokenStore[team]?.eventKey) {
+    if (!tokenStore[team]?.event) {
       await client.chat.postEphemeral({
         channel: command.channel_id,
         user: command.user_id,
@@ -191,7 +191,7 @@ app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   }
 );
 
-app.command("/scout-assign", async ({ command, ack, respond }) => {
+app.command("/scout-assign", async ({ command, ack, respond, client }) => {
   await ack();
 
   const teamId = command.team_id;
@@ -268,7 +268,7 @@ app.command("/scout-assign", async ({ command, ack, respond }) => {
   }
 
   // Check if team has an event key
-  if (!tokenStore[teamId]?.eventKey) {
+  if (!tokenStore[teamId]?.event) {
     await client.chat.postEphemeral({
       channel: command.channel_id,
       user: command.user_id,
@@ -350,7 +350,7 @@ app.command("/block-assign", async ({ command, ack, respond, client }) => {
   message += `to matches ${start}-${end}`;
   respond(message);
 
-  if (!tokenStore[teamId]?.channelId) {
+  if (!tokenStore[team]?.channelId) {
     await client.chat.postEphemeral({
       channel: command.channel_id, // current channel
       user: command.user_id, // only the user who ran the command sees it
@@ -359,7 +359,7 @@ app.command("/block-assign", async ({ command, ack, respond, client }) => {
   }
 
   // Check if team has an event key
-  if (!tokenStore[teamId]?.eventKey) {
+  if (!tokenStore[team]?.event) {
     await client.chat.postEphemeral({
       channel: command.channel_id,
       user: command.user_id,
@@ -586,7 +586,7 @@ app.event("app_mention", async ({ event, client }) => {
   }
 });
 
-app.command("/set-event", async ({ command, ack, respond }) => {
+app.command("/set-event", async ({ command, ack, respond, client }) => {
   await ack();
   const text = command.text;
   const teamId = command.team_id;
@@ -696,7 +696,7 @@ app.command("/call-match", async ({ command, ack, respond, client }) => {
       }
 
       // Check if team has an event key
-      if (!tokenStore[team]?.eventKey) {
+      if (!tokenStore[team]?.event) {
         await client.chat.postEphemeral({
           channel: command.channel_id,
           user: command.user_id,
@@ -1111,10 +1111,10 @@ receiver.router.post("/webhook", async (req, res) => {
 
   if (
     payload.nowQueuing.match("Qualification") &&
-    !recentlyNotifiedMatches.has(payload.nowQueuing)
+    !recentlyNotifiedMatches.has(`${payload.nowQueuing}${payload.eventKey}`)
   ) {
     //prevent duplicates
-    recentlyNotifiedMatches.add(payload.nowQueuing);
+    recentlyNotifiedMatches.add(`${payload.nowQueuing}${payload.eventKey}`);
     setTimeout(() => {
       recentlyNotifiedMatches.delete(payload.nowQueuing);
     }, 30 * 1000);
