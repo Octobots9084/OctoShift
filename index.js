@@ -11,6 +11,7 @@ const {
   saveNameForTeam,
   getNameForTeam,
   getAllTokens,
+  getEventForTeam,
 } = require("./tokenStore");
 const logChannel = "D08UNPHLKJ7";
 const schedulePath = path.join(__dirname, "schedule.json");
@@ -717,198 +718,12 @@ app.command("/call-match", async ({ command, ack, respond, client }) => {
 });
 
 //home tab
-async function generateHomeTab(team, errorMessage) {
-  let currentChannel = getChannelForTeam(team);
-  let blocks = [];
-  blocks.push(
-    {
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: "*👋 Welcome to OctoShift!* \nHere you can configure your team's scouting schedule.",
-      },
-    },
-    {
-      type: "divider",
-    },
-    {
-      type: "input",
-      block_id: "channel_block",
-      label: {
-        type: "plain_text",
-        text: "Default Channel",
-      },
-      element: {
-        // ✅ must be "element" instead of "accessory"
-        type: "conversations_select",
-        action_id: "channel_input",
-        placeholder: {
-          type: "plain_text",
-          text: "Select a channel to receive notifications",
-        },
-        ...(currentChannel ? { initial_conversation: currentChannel } : {}),
-      },
-    },
-    {
-      type: "input",
-      block_id: "event_block",
-      label: {
-        type: "plain_text",
-        text: "Event Key",
-      },
-      element: {
-        type: "plain_text_input",
-        action_id: "event_input",
-        placeholder: {
-          type: "plain_text",
-          text: "Enter event code (e.g., 2025cave)",
-        },
-      },
-    },
-    {
-      type: "divider",
-    }
-  );
-  if (errorMessage) {
-    blocks.push({
-      type: "section",
-      text: {
-        type: "mrkdwn",
-        text: `:warning:\r ${errorMessage}`,
-      },
-    });
-    blocks.push({ type: "divider" });
-  }
-
-  let schedule = loadSchedule();
-  var filteredSchedule = schedule.filter((element) => element.team == team);
-  filteredSchedule.sort((a, b) => a.start - b.start);
-
-  schedule.forEach((block, index) => {
-    blocks.push(
-      {
-        type: "input",
-        block_id: `block_${block.id}_range`,
-        label: {
-          type: "plain_text",
-          text: "Match Range",
-        },
-        element: {
-          type: "plain_text_input",
-          action_id: "match_range_input",
-          initial_value: `${block.start}-${block.end}`, // e.g., "11-20"
-          placeholder: {
-            type: "plain_text",
-            text: "Enter start-end (e.g., 11-20)",
-          },
-        },
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Blue Alliance 🟦",
-        },
-      },
-      {
-        type: "actions",
-        block_id: `blue_team_${block.id}`,
-        elements: ["Blue 1", "Blue 2", "Blue 3"].map((role) => ({
-          type: "users_select",
-          action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
-          placeholder: { type: "plain_text", text: role },
-          initial_user: block.assignments?.[role] || undefined,
-        })),
-      },
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "Red Alliance 🟥",
-        },
-      },
-      {
-        type: "actions",
-        block_id: `red_team_${block.id}`,
-        elements: [
-          ...["Red 1", "Red 2", "Red 3"].map((role) => ({
-            type: "users_select",
-            action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
-            placeholder: { type: "plain_text", text: role },
-            initial_user: block.assignments?.[role] || undefined,
-          })),
-          {
-            type: "button",
-            text: {
-              type: "plain_text",
-              text: "🗑️ Delete",
-              emoji: true,
-            },
-            style: "danger",
-            action_id: `delete_block_${block.id}`,
-            value: JSON.stringify({ start: block.start, end: block.end }),
-            confirm: {
-              title: { type: "plain_text", text: "Delete Block?" },
-              text: {
-                type: "mrkdwn",
-                text: `Are you sure you want to delete block *${block.start}-${block.end}*?`,
-              },
-              confirm: { type: "plain_text", text: "Yes, delete" },
-              deny: { type: "plain_text", text: "Cancel" },
-            },
-          },
-        ],
-      }
-    );
-
-    // Divider between blocks
-    blocks.push({ type: "divider" });
-  });
-
-  blocks.push(
-    {
-      type: "actions",
-      block_id: "add_block",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "+ Add Block",
-          },
-          style: "primary",
-          action_id: "add_block_btn",
-        },
-      ],
-    },
-    {
-      type: "actions",
-      block_id: "save_block",
-      elements: [
-        {
-          type: "button",
-          text: {
-            type: "plain_text",
-            text: "💾 Save Settings",
-          },
-          style: "primary",
-          value: "save_settings",
-          action_id: "save_settings_btn",
-        },
-      ],
-    }
-  );
-
-  return blocks;
-}
-
 async function saveSettings(body) {
   let errors = ``;
   const values = body.view.state.values;
-  //console.log(values);
   const channelId = values.channel_block.channel_input.selected_conversation;
   const eventKey = values.event_block.event_input.value;
-
+  console.log("\nSent some values!!!!\n\n", values);
   const teamId = body.team.id;
   let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
   const response = await fetch(
@@ -928,7 +743,10 @@ async function saveSettings(body) {
   schedule.forEach((block, index) => {
     if (block.team == teamId) {
       //save start and end range
-      rangeInput = values[`block_${block.id}_range`].match_range_input.value;
+      rangeInput = values[`block_${block.id}_range`]?.match_range_input.value;
+      if (!rangeInput) {
+        return;
+      }
       let start;
       let end;
       try {
@@ -965,23 +783,243 @@ async function saveSettings(body) {
   return errors;
 }
 
+// Keep per-user pagination state
+const userPages = new Map();
+
+async function generateHomeTab(team, userId, page = 1, errorMessage) {
+  let currentChannel = getChannelForTeam(team);
+  let currentEvent = getEventForTeam(team);
+  let blocks = [];
+  blocks.push(
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "*👋 Welcome to OctoShift!* \nHere you can configure your team's scouting schedule.",
+      },
+    },
+    { type: "divider" },
+    {
+      type: "input",
+      block_id: "channel_block",
+      label: { type: "plain_text", text: "Default Channel" },
+      element: {
+        // ✅ must be "element" instead of "accessory"
+        type: "conversations_select",
+        action_id: "channel_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Select a channel to receive notifications",
+        },
+        ...(currentChannel ? { initial_conversation: currentChannel } : {}),
+      },
+    },
+    {
+      type: "input",
+      block_id: "event_block",
+      label: { type: "plain_text", text: "Event Key" },
+      element: {
+        type: "plain_text_input",
+        action_id: "event_input",
+        placeholder: {
+          type: "plain_text",
+          text: "Enter event code (e.g., 2025cave)",
+        },
+        ...(currentEvent ? { initial_value: currentEvent } : {}),
+      },
+    },
+    { type: "divider" }
+  );
+
+  if (errorMessage) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `:warning:\n${errorMessage}` },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  let schedule = loadSchedule().filter((b) => b.team === team);
+  schedule.sort((a, b) => a.start - b.start);
+
+  const blocksPerPage = 10;
+  const totalPages = Math.max(1, Math.ceil(schedule.length / blocksPerPage));
+  page = Math.min(page, totalPages);
+
+  const startIndex = (page - 1) * blocksPerPage;
+  const endIndex = startIndex + blocksPerPage;
+  const visibleBlocks = schedule.slice(startIndex, endIndex);
+
+  visibleBlocks.forEach((block) => {
+    if (block.team == team) {
+      blocks.push(
+        {
+          type: "input",
+          block_id: `block_${block.id}_range`,
+          label: { type: "plain_text", text: "Match Range" },
+          element: {
+            type: "plain_text_input",
+            action_id: "match_range_input",
+            initial_value: `${block.start}-${block.end}`,
+            placeholder: {
+              type: "plain_text",
+              text: "Enter start-end (e.g., 11-20)",
+            },
+          },
+        },
+        { type: "section", text: { type: "mrkdwn", text: "Blue Alliance 🟦" } },
+        {
+          type: "actions",
+          block_id: `blue_team_${block.id}`,
+          elements: ["Blue 1", "Blue 2", "Blue 3"].map((role) => ({
+            type: "users_select",
+            action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+            placeholder: { type: "plain_text", text: role },
+            initial_user: block.assignments?.[role] || undefined,
+          })),
+        },
+        { type: "section", text: { type: "mrkdwn", text: "Red Alliance 🟥" } },
+        {
+          type: "actions",
+          block_id: `red_team_${block.id}`,
+          elements: [
+            ...["Red 1", "Red 2", "Red 3"].map((role) => ({
+              type: "users_select",
+              action_id: `${role.toLowerCase().replace(" ", "_")}_input`,
+              placeholder: { type: "plain_text", text: role },
+              initial_user: block.assignments?.[role] || undefined,
+            })),
+            {
+              type: "button",
+              text: { type: "plain_text", text: "🗑️ Delete", emoji: true },
+              style: "danger",
+              action_id: `delete_block_${block.id}`,
+              value: JSON.stringify({ start: block.start, end: block.end }),
+            },
+          ],
+        },
+        { type: "divider" }
+      );
+    }
+  });
+
+  // Pagination controls
+  if (totalPages > 1) {
+    const paginationElements = [];
+
+    if (page > 1) {
+      paginationElements.push({
+        type: "button",
+        text: { type: "plain_text", text: "◀ Previous" },
+        action_id: "prev_page",
+        value: String(page - 1),
+      });
+    }
+
+    paginationElements.push({
+      type: "button",
+      text: { type: "plain_text", text: `Page ${page} of ${totalPages}` },
+      action_id: "noop_page_label", // inert button
+      value: "noop",
+    });
+
+    if (page < totalPages) {
+      paginationElements.push({
+        type: "button",
+        text: { type: "plain_text", text: "Next ▶" },
+        action_id: "next_page",
+        value: String(page + 1),
+      });
+    }
+
+    blocks.push({
+      type: "actions",
+      block_id: "pagination_controls",
+      elements: paginationElements,
+    });
+  }
+
+  // Final action buttons
+  blocks.push(
+    {
+      type: "actions",
+      block_id: "add_block",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "+ Add Block" },
+          style: "primary",
+          action_id: "add_block_btn",
+        },
+      ],
+    },
+    {
+      type: "actions",
+      block_id: "save_block",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "💾 Save Settings" },
+          style: "primary",
+          value: "save_settings",
+          action_id: "save_settings_btn",
+        },
+      ],
+    }
+  );
+
+  userPages.set(userId, page);
+  return blocks;
+}
+
+// --- Handle home opened ---
 app.event("app_home_opened", async ({ event, client, body }) => {
-  if (event.tab == "home") {
-    let blocks = await generateHomeTab(body.team_id);
+  if (event.tab === "home") {
+    console.log(event);
+    const userId = event.user;
+    const teamId = body.team_id;
+    const page = userPages.get(userId) || 1;
+    const blocks = await generateHomeTab(teamId, userId, page);
     try {
+      console.log("Publishing home view for", event.user);
+      console.log("Total blocks:", blocks.length);
+      const view = {
+        type: "home",
+        callback_id: "home_view",
+        blocks,
+      };
+      console.log(
+        "Sample block IDs:",
+        blocks.slice(0, 5).map((b) => b.block_id)
+      );
       await client.views.publish({
         user_id: event.user,
-        view: {
-          type: "home",
-          callback_id: "home_view",
-
-          blocks: blocks,
-        },
+        view,
       });
     } catch (error) {
-      console.error("Error publishing home tab:", error);
+      console.error("Error publishing home tab:", error.data || error);
     }
   }
+});
+
+// --- Handle page button actions ---
+app.action(/^(next_page|prev_page)$/, async ({ body, ack, action, client }) => {
+  await ack();
+  const userId = body.user.id;
+  const teamId = body.team.id;
+  const newPage = parseInt(action.value, 10);
+
+  const blocks = await generateHomeTab(teamId, userId, newPage);
+  console.log(newPage);
+  console.log(blocks);
+  await client.views.publish({
+    user_id: userId,
+    view: {
+      type: "home",
+      callback_id: "home_view",
+      blocks,
+    },
+  });
 });
 
 // Handle save button
@@ -991,7 +1029,7 @@ app.action(/_input$/, async ({ body, ack, client, logger }) => {
   let errors = await saveSettings(body);
 
   // Update home tab with confirmation
-  const blocks = await generateHomeTab(body.team.id, errors);
+  const blocks = await generateHomeTab(body.team.id, 1, errors);
   await client.views.publish({
     user_id: body.user.id,
     view: {
@@ -1009,7 +1047,7 @@ app.action("save_settings_btn", async ({ ack, body, client }) => {
   let errors = await saveSettings(body);
 
   // Update home tab with confirmation
-  const blocks = await generateHomeTab(body.team.id, errors);
+  const blocks = await generateHomeTab(body.team.id, 1, errors);
   await client.views.publish({
     user_id: body.user.id,
     view: {
@@ -1044,7 +1082,7 @@ app.action("add_block_btn", async ({ ack, body, client }) => {
   saveSchedule(schedule);
 
   // Republish Home tab with the new block added
-  const blocks = await generateHomeTab(body.team.id);
+  const blocks = await generateHomeTab(body.team.id, 1);
   await client.views.publish({
     user_id: body.user.id,
     view: {
@@ -1074,7 +1112,7 @@ app.action(/delete_block_/, async ({ ack, body, client, action }) => {
     saveSchedule(updatedSchedule);
 
     // Update the home tab so the block disappears immediately
-    const blocks = await generateHomeTab(teamId);
+    const blocks = await generateHomeTab(teamId, 1);
     await client.views.publish({
       user_id: body.user.id,
       view: {
@@ -1107,7 +1145,11 @@ receiver.router.post("/webhook", async (req, res) => {
   let schedule = loadSchedule();
   let message = "";
   // Log or handle the webhook payload
-  console.log("Webhook received: Now Queuing", payload.nowQueuing);
+  console.log(
+    "Webhook received: Now Queuing",
+    payload.nowQueuing,
+    payload.eventKey
+  );
 
   if (
     payload.nowQueuing.match("Qualification") &&
