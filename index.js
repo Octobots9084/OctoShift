@@ -804,7 +804,6 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
       block_id: "channel_block",
       label: { type: "plain_text", text: "Default Channel" },
       element: {
-        // ✅ must be "element" instead of "accessory"
         type: "conversations_select",
         action_id: "channel_input",
         placeholder: {
@@ -1077,6 +1076,7 @@ app.action("add_block_btn", async ({ ack, body, client }) => {
     assignments: {},
     team: teamId,
     id: generateId(),
+    checkins: [],
   };
   schedule.push(newBlock);
   saveSchedule(schedule);
@@ -1216,14 +1216,101 @@ receiver.router.post("/webhook", async (req, res) => {
               token,
               channel,
               text: message,
+              blocks: [
+                {
+                  type: "section",
+                  text: {
+                    type: "mrkdwn",
+                    text: message,
+                  },
+                },
+                {
+                  type: "actions",
+                  elements: [
+                    {
+                      type: "button",
+                      text: {
+                        type: "plain_text",
+                        text: "Check in",
+                      },
+                      style: "primary",
+                      action_id: "check_in",
+                      value: schedule[i].id,
+                    },
+                  ],
+                },
+              ],
             });
             console.log(`sent to ${getNameForTeam(team)}`);
           }
+        } else if (
+          schedule[i].start ==
+          parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 3
+        ) {
+          const token = tokenStore[team].botToken;
+          const channel = tokenStore[team].channelId;
+          let users = ``;
+          Object.values(schedule[i].assignments).forEach((scout) => {
+            if (!schedule[i].checkins.includes(scout)) {
+              users += `<@${scout}>, `;
+            }
+          });
+          if (users.length > 1) {
+            message = `The following scouts have not checked in: ${users.slice(
+              0,
+              -2
+            )}`;
+          } else {
+            message = `All scouts have checked in!`;
+          }
+          await app.client.chat.postMessage({
+            token,
+            channel,
+            text: message,
+          });
+          console.log(`sent to ${getNameForTeam(team)}`);
         }
       }
     }
   }
   res.status(200).send("OK");
+});
+
+app.action("check_in", async ({ ack, body, client, action, respond }) => {
+  await ack();
+  const user = body.user.id;
+  const channel = body.channel.id;
+  const team = body.team.id;
+  const blockId = body.actions[0].value;
+  let schedule = loadSchedule();
+  let block = schedule.find((b) => b.id == blockId);
+  if (Object.values(block.assignments || {}).includes(user)) {
+    if (!block.checkins.includes(user)) {
+      block.checkins.push(user);
+      await client.chat.postEphemeral({
+        text: "Checked in!",
+        channel: channel,
+        user: user,
+        response_type: "ephemeral",
+      });
+    } else {
+      await client.chat.postEphemeral({
+        channel: channel,
+        user: user,
+        text: "You're already checked in!",
+        response_type: "ephemeral",
+      });
+    }
+  } else {
+    await client.chat.postEphemeral({
+      channel: channel,
+      user: user,
+      text: "You aren't in this shift!",
+      response_type: "ephemeral",
+    });
+  }
+
+  saveSchedule(schedule);
 });
 //redirect url
 app.receiver.router.get("/slack/oauth_redirect", async (req, res) => {
