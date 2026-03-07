@@ -791,6 +791,7 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
   let currentChannel = getChannelForTeam(team);
   let currentEvent = getEventForTeam(team);
   let blocks = [];
+  page < 1 ? (page = 1) : page;
   blocks.push(
     {
       type: "section",
