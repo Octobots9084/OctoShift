@@ -250,6 +250,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: teamId,
       id: generateId(),
+      checkins: [],
     };
     schedule.push(block);
   }
@@ -336,6 +337,7 @@ app.command("/block-assign", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: team,
       id: generateId(),
+      checkins: [],
     };
     schedule.push(block);
   }
@@ -789,6 +791,7 @@ const userPages = new Map();
 async function generateHomeTab(team, userId, page = 1, errorMessage) {
   let currentChannel = getChannelForTeam(team);
   let currentEvent = getEventForTeam(team);
+  page<1?page=1:page;
   let blocks = [];
   blocks.push(
     {
