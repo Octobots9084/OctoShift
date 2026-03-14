@@ -13,7 +13,7 @@ const {
   getAllTokens,
   getEventForTeam,
 } = require("./tokenStore");
-const logChannel = "D09EN064Z0Q";
+const logChannel = "D08UNPHLKJ7";
 const schedulePath = path.join(__dirname, "schedule.json");
 const { App, ExpressReceiver } = require("@slack/bolt");
 const express = require("express");
@@ -122,8 +122,7 @@ async function generateScheduleImage(schedule, team) {
   return canvas.toBuffer();
 }
 
-//prettier-ignore
-app.command( "/print-schedule-test", async ({ command, ack, client, respond }) => {
+app.command("/print-schedule", async ({ command, ack, client, respond }) => {
   await ack(); // Ack early to avoid timeout
 
   tokenStore=getAllTokens();
@@ -203,7 +202,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
     " from ",
     command.user_name,
     "in",
-    getNameForTeam(teamId),
+    getNameForTeam(teamId)
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
@@ -225,8 +224,8 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
   if (!allowedRoles.includes(rawRole.toLowerCase())) {
     return respond(
       `❌ Invalid role "${rawRole}". Please use one of: ${allowedRoles.join(
-        ", ",
-      )}`,
+        ", "
+      )}`
     );
   }
   const rangeMatch = rangeStr.match(/^(\d+)-(\d+)$/);
@@ -242,7 +241,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
   // Load and update schedule
   const schedule = loadSchedule();
   let block = schedule.find(
-    (b) => b.start === start && b.end === end && b.team == teamId,
+    (b) => b.start === start && b.end === end && b.team == teamId
   );
   if (!block) {
     block = {
@@ -251,7 +250,6 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: teamId,
       id: generateId(),
-      checkins: [],
     };
     schedule.push(block);
   }
@@ -260,7 +258,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
   saveSchedule(schedule);
 
   respond(
-    `✅ Assigned <@${userId}> to *${role.toUpperCase()}* for matches ${start}-${end}`,
+    `✅ Assigned <@${userId}> to *${role.toUpperCase()}* for matches ${start}-${end}`
   );
   if (!tokenStore[teamId]?.channelId) {
     await client.chat.postEphemeral({
@@ -280,7 +278,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
   }
 });
 
-app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
+app.command("/block-assign", async ({ command, ack, respond, client }) => {
   await ack();
   const team = command.team_id;
   const text = command.text.trim();
@@ -290,7 +288,7 @@ app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
     " from ",
     command.user_name,
     "in",
-    getNameForTeam(command.team_id),
+    getNameForTeam(command.team_id)
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
@@ -316,7 +314,7 @@ app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
 
     if (!allowedRoles.includes(rawKey)) {
       return respond(
-        `❌ Invalid role "${rawKey}". Allowed roles: ${allowedRoles.join(", ")}`,
+        `❌ Invalid role "${rawKey}". Allowed roles: ${allowedRoles.join(", ")}`
       );
     }
 
@@ -329,7 +327,7 @@ app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
   }
 
   let block = schedule.find(
-    (b) => b.start === start && b.end === end && b.team == team,
+    (b) => b.start === start && b.end === end && b.team == team
   );
   if (!block) {
     block = {
@@ -338,7 +336,6 @@ app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: team,
       id: generateId(),
-      checkins: [],
     };
     schedule.push(block);
   }
@@ -372,7 +369,7 @@ app.command("/block-assign-test", async ({ command, ack, respond, client }) => {
   }
 });
 
-app.command("/clear-schedule-test", async ({ command, ack, respond }) => {
+app.command("/clear-schedule", async ({ command, ack, respond }) => {
   await ack();
 
   const text = command.text.trim();
@@ -381,7 +378,7 @@ app.command("/clear-schedule-test", async ({ command, ack, respond }) => {
     "Recieved command: clear-schedule: " + text + " from ",
     command.user_name,
     " in ",
-    getNameForTeam(team),
+    getNameForTeam(team)
   );
 
   await octoClient.chat.postMessage({
@@ -420,7 +417,7 @@ app.command("/clear-schedule-test", async ({ command, ack, respond }) => {
               text: "Cancel",
             },
             style: "primary",
-            action_id: "cancel_delete",
+            action_id: "cancel_delete_schedule",
           },
         ],
       },
@@ -439,7 +436,7 @@ app.action("confirm_delete_schedule", async ({ ack, body, say, respond }) => {
   respond({ replace_original: true, text: "Schedule has been deleted" });
   say(`<@${body.user.id}> has deleted the entire schedule`);
 });
-app.command("/clear-block-test", async ({ command, ack, respond }) => {
+app.command("/clear-block", async ({ command, ack, respond }) => {
   await ack();
 
   const text = command.text.trim();
@@ -448,7 +445,7 @@ app.command("/clear-block-test", async ({ command, ack, respond }) => {
     "Recieved command: clear-block: " + text + " from ",
     command.user_name,
     " in ",
-    getNameForTeam(team),
+    getNameForTeam(team)
   );
 
   await octoClient.chat.postMessage({
@@ -512,13 +509,13 @@ app.action("confirm_delete_block", async ({ ack, body, say, respond }) => {
 
   const schedule = loadSchedule();
   let block = schedule.find(
-    (b) => b.start === start && b.end === end && b.team == teamId,
+    (b) => b.start === start && b.end === end && b.team == teamId
   );
   if (!block) {
     respond(`Block ${start}-${end} does not exist!`);
   } else {
     const updatedSchedule = schedule.filter(
-      (b) => b.start !== start && b.end !== end && b.team != teamId,
+      (b) => b.start !== start && b.end !== end && b.team != teamId
     );
     saveSchedule(updatedSchedule);
     respond({ replace_original: true, text: "Block has been deleted" });
@@ -529,18 +526,18 @@ app.action("cancel_delete", async ({ ack, body, client, respond }) => {
   await ack();
   await respond({ text: "❌Canceled", replace_original: true });
 });
-app.command("/set-channel-test", async ({ command, ack, respond, client }) => {
+app.command("/set-channel", async ({ command, ack, respond, client }) => {
   await ack();
   console.log(
     "recieved: set-channel from",
     command.user_name,
     " in ",
-    getNameForTeam(command.team_id),
+    getNameForTeam(command.team_id)
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
     text: `recieved: set-channel: from ${command.user_name} in ${getNameForTeam(
-      command.team_id,
+      command.team_id
     )}`,
   });
   const teamId = command.team_id;
@@ -571,13 +568,13 @@ app.event("app_mention", async ({ event, client }) => {
     "Mentioned by ",
     await getDisplayName(event.user, event.team),
     " in ",
-    getNameForTeam(event.team),
+    getNameForTeam(event.team)
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
     text: `mentioned by ${await getDisplayName(
       event.user,
-      event.team,
+      event.team
     )} in ${getNameForTeam(event.team)}`,
   });
   const result = await client.chat.postMessage({
@@ -601,7 +598,7 @@ app.command("/set-event", async ({ command, ack, respond, client }) => {
     " from ",
     command.user_name,
     " in ",
-    name,
+    name
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
@@ -611,9 +608,10 @@ app.command("/set-event", async ({ command, ack, respond, client }) => {
   let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
   const response = await fetch(
     `https://www.thebluealliance.com/api/v3/event/${text}`,
-    { headers },
+    { headers }
   );
   let parsedResponse = await response.json();
+  console.log("repspones: ", parsedResponse);
   if (!response.ok) {
     return respond(`Event ${text} was not found`);
   } else {
@@ -637,7 +635,7 @@ app.command("/set-event", async ({ command, ack, respond, client }) => {
   }
 });
 
-app.command("/call-match-test", async ({ command, ack, respond, client }) => {
+app.command("/call-match", async ({ command, ack, respond, client }) => {
   await ack();
   const text = command.text;
   const team = command.team_id;
@@ -648,7 +646,7 @@ app.command("/call-match-test", async ({ command, ack, respond, client }) => {
     " from ",
     command.user_name,
     " in ",
-    name,
+    name
   );
   await octoClient.chat.postMessage({
     channel: logChannel,
@@ -718,6 +716,7 @@ app.command("/call-match-test", async ({ command, ack, respond, client }) => {
     }
   }
 });
+
 //home tab
 async function saveSettings(body) {
   let errors = ``;
@@ -729,7 +728,7 @@ async function saveSettings(body) {
   let headers = { "X-TBA-Auth-Key": process.env.TBA_API_KEY };
   const response = await fetch(
     `https://www.thebluealliance.com/api/v3/event/${eventKey}`,
-    { headers },
+    { headers }
   );
   saveChannelForTeam(teamId, channelId);
   if (response.ok) {
@@ -791,7 +790,6 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
   let currentChannel = getChannelForTeam(team);
   let currentEvent = getEventForTeam(team);
   let blocks = [];
-  page < 1 ? (page = 1) : page;
   blocks.push(
     {
       type: "section",
@@ -806,6 +804,7 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
       block_id: "channel_block",
       label: { type: "plain_text", text: "Default Channel" },
       element: {
+        // ✅ must be "element" instead of "accessory"
         type: "conversations_select",
         action_id: "channel_input",
         placeholder: {
@@ -829,7 +828,7 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
         ...(currentEvent ? { initial_value: currentEvent } : {}),
       },
     },
-    { type: "divider" },
+    { type: "divider" }
   );
 
   if (errorMessage) {
@@ -899,7 +898,7 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
             },
           ],
         },
-        { type: "divider" },
+        { type: "divider" }
       );
     }
   });
@@ -966,7 +965,7 @@ async function generateHomeTab(team, userId, page = 1, errorMessage) {
           action_id: "save_settings_btn",
         },
       ],
-    },
+    }
   );
 
   userPages.set(userId, page);
@@ -979,7 +978,7 @@ app.event("app_home_opened", async ({ event, client, body }) => {
     console.log(event);
     const userId = event.user;
     const teamId = body.team_id;
-    const page = userPages.get(userId) > 0 ? userPages.get(userId) : 1;
+    const page = userPages.get(userId) || 1;
     const blocks = await generateHomeTab(teamId, userId, page);
     try {
       console.log("Publishing home view for", event.user);
@@ -991,7 +990,7 @@ app.event("app_home_opened", async ({ event, client, body }) => {
       };
       console.log(
         "Sample block IDs:",
-        blocks.slice(0, 5).map((b) => b.block_id),
+        blocks.slice(0, 5).map((b) => b.block_id)
       );
       await client.views.publish({
         user_id: event.user,
@@ -1078,7 +1077,6 @@ app.action("add_block_btn", async ({ ack, body, client }) => {
     assignments: {},
     team: teamId,
     id: generateId(),
-    checkins: [],
   };
   schedule.push(newBlock);
   saveSchedule(schedule);
@@ -1108,7 +1106,7 @@ app.action(/delete_block_/, async ({ ack, body, client, action }) => {
 
     // Remove the matching block
     const updatedSchedule = schedule.filter(
-      (b) => !(b.start === start && b.end === end && b.team === teamId),
+      (b) => !(b.start === start && b.end === end && b.team === teamId)
     );
 
     saveSchedule(updatedSchedule);
@@ -1150,7 +1148,7 @@ receiver.router.post("/webhook", async (req, res) => {
   console.log(
     "Webhook received: Now Queuing",
     payload.nowQueuing,
-    payload.eventKey,
+    payload.eventKey
   );
 
   if (
@@ -1164,26 +1162,7 @@ receiver.router.post("/webhook", async (req, res) => {
     }, 30 * 1000);
     const tokenStore = getAllTokens();
     for (const team in tokenStore) {
-      console.log(team);
-      console.log(tokenStore[team]["event"]);
       for (let i = 0; i < schedule.length; i++) {
-        console.log(
-          "apples " +
-            (parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1) +
-            "   " +
-            schedule[i].start,
-        );
-        console.log(
-          "pears   " +
-            (schedule[i].start == //prettier-ignore
-              parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1 ||
-              schedule[i].start ==
-                parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 2) +
-            req.body.eventKey +
-            "  " +
-            tokenStore[team]["event"],
-        );
-
         if (
           (schedule[i].start ==
             parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1 ||
@@ -1229,108 +1208,22 @@ receiver.router.post("/webhook", async (req, res) => {
           if (!token || !channel) {
             console.warn(
               "Missing token or channel for team",
-              getNameForTeam(team),
+              getNameForTeam(team)
             );
           } else {
+            console.log("attempted to send");
             await app.client.chat.postMessage({
               token,
               channel,
               text: message,
-              blocks: [
-                {
-                  type: "section",
-                  text: {
-                    type: "mrkdwn",
-                    text: message,
-                  },
-                },
-                {
-                  type: "actions",
-                  elements: [
-                    {
-                      type: "button",
-                      text: {
-                        type: "plain_text",
-                        text: "Check in",
-                      },
-                      style: "primary",
-                      action_id: "check_in",
-                      value: schedule[i].id,
-                    },
-                  ],
-                },
-              ],
             });
             console.log(`sent to ${getNameForTeam(team)}`);
           }
-        } else if (
-          schedule[i].start ==
-          parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 3
-        ) {
-          const token = tokenStore[team].botToken;
-          const channel = tokenStore[team].channelId;
-          let users = ``;
-          Object.values(schedule[i].assignments).forEach((scout) => {
-            if (!schedule[i].checkins.includes(scout)) {
-              users += `<@${scout}>, `;
-            }
-          });
-          if (users.length > 1) {
-            message = `The following scouts have not checked in: ${users.slice(
-              0,
-              -2,
-            )}`;
-          } else {
-            message = `All scouts have checked in!`;
-          }
-          await app.client.chat.postMessage({
-            token,
-            channel,
-            text: message,
-          });
-          console.log(`sent to ${getNameForTeam(team)}`);
         }
       }
     }
   }
   res.status(200).send("OK");
-});
-
-app.action("check_in", async ({ ack, body, client, action, respond }) => {
-  await ack();
-  const user = body.user.id;
-  const channel = body.channel.id;
-  const team = body.team.id;
-  const blockId = body.actions[0].value;
-  let schedule = loadSchedule();
-  let block = schedule.find((b) => b.id == blockId);
-  if (Object.values(block.assignments || {}).includes(user)) {
-    if (!block.checkins.includes(user)) {
-      block.checkins.push(user);
-      await client.chat.postEphemeral({
-        text: "Checked in!",
-        channel: channel,
-        user: user,
-        response_type: "ephemeral",
-      });
-    } else {
-      await client.chat.postEphemeral({
-        channel: channel,
-        user: user,
-        text: "You're already checked in!",
-        response_type: "ephemeral",
-      });
-    }
-  } else {
-    await client.chat.postEphemeral({
-      channel: channel,
-      user: user,
-      text: "You aren't in this shift!",
-      response_type: "ephemeral",
-    });
-  }
-
-  saveSchedule(schedule);
 });
 //redirect url
 app.receiver.router.get("/slack/oauth_redirect", async (req, res) => {
@@ -1346,7 +1239,6 @@ app.receiver.router.get("/slack/oauth_redirect", async (req, res) => {
 
     const botToken = result.access_token;
     const teamId = result.team.id;
-    console.log(teamId);
     const teamName = result.team.name;
 
     saveTokenForTeam(teamId, botToken);
