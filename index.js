@@ -1218,7 +1218,8 @@ receiver.router.post("/webhook", async (req, res) => {
           assignments = schedule[i].assignments;
           if (
             schedule[i].start ==
-            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1
+              parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1 &&
+            tokenStore[team]["event"] == req.body.eventKey
           ) {
             message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
           } else if (
