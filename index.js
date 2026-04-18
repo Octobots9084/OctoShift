@@ -250,6 +250,7 @@ app.command("/scout-assign", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: teamId,
       id: generateId(),
+      checkins: [],
     };
     schedule.push(block);
   }
@@ -336,6 +337,7 @@ app.command("/block-assign", async ({ command, ack, respond, client }) => {
       assignments: {},
       team: team,
       id: generateId(),
+      checkins: [],
     };
     schedule.push(block);
   }
@@ -635,7 +637,47 @@ app.command("/set-event", async ({ command, ack, respond, client }) => {
   }
 });
 
-app.command("/call-match", async ({ command, ack, respond, client }) => {
+app.command("/ping-scouts", async ({ command, ack, respond, client }) => {
+  await ack();
+  tokenStore = getAllTokens();
+  const users = [];
+  let team = command.team_id;
+  console.log(
+    "Recieved command: print schedule from ",
+    command.user_name,
+    " in ",
+    getNameForTeam(team),
+  );
+  await octoClient.chat.postMessage({
+    channel: logChannel,
+    text: `recieved: print schedule:from ${
+      command.user_name
+    } in ${getNameForTeam(team)}`,
+  });
+  const schedule = loadSchedule();
+  const hasMatches = schedule.some((block) => block.team === team);
+  if (!hasMatches) return respond("Your team has no logged scouting schedule");
+
+  var filteredSchedule = schedule.filter((element) => element.team == team);
+  filteredSchedule.sort((a, b) => a.start - b.start);
+  // Generate image buffer (could be from your generateScheduleImage function)
+  const buffer = await generateScheduleImage(filteredSchedule, team);
+
+  for (const block of schedule) {
+    const roles = ["Blue 1", "Blue 2", "Blue 3", "Red 1", "Red 2", "Red 3"];
+    for (const role of roles) {
+      if (!users.includes(block.assignments[role])) {
+        users.push(block.assignments[role]);
+      }
+    }
+  }
+
+  await respond({
+    text: `<@${users.join("> <@")}>`,
+    response_type: "in_channel",
+  });
+});
+app.command("/call-match-test", async ({ command, ack, respond, client }) => {
   await ack();
   const text = command.text;
   const team = command.team_id;
@@ -789,6 +831,7 @@ const userPages = new Map();
 async function generateHomeTab(team, userId, page = 1, errorMessage) {
   let currentChannel = getChannelForTeam(team);
   let currentEvent = getEventForTeam(team);
+  page < 1 ? (page = 1) : page;
   let blocks = [];
   blocks.push(
     {
@@ -1175,7 +1218,8 @@ receiver.router.post("/webhook", async (req, res) => {
           assignments = schedule[i].assignments;
           if (
             schedule[i].start ==
-            parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1
+              parseInt(payload.nowQueuing.match(/\d+$/)?.[0], 10) - 1 &&
+            tokenStore[team]["event"] == req.body.eventKey
           ) {
             message = `Prepare to scout starting with match ${schedule[i].start} until match ${schedule[i].end} \n`;
           } else if (
